@@ -65,12 +65,26 @@ def _hexescape(char: str) -> str:
     return f"%{ord(char):02X}"
 
 
-def _join(path: str, parts: ParseResult) -> str:
+def _canonicalize_query(query: str, *, pattern: bool = False) -> str:
+    """Return *query* in the canonical form used for matching.
+
+    Percent-encoded literal characters are decoded, so ``|`` and ``%7C``
+    (or ``=`` and ``%3D``) compare the same. In patterns, a literal ``*``
+    remains a wildcard and ``%2A`` remains a literal asterisk. In a URL,
+    a literal ``*`` is encoded instead, keeping that distinction.
+    """
+    if pattern:
+        return _unquote(query, ignore="*$%")
+    query = _unquote(query, ignore="$%")
+    return query.replace("*", "%2A")
+
+
+def _join(path: str, parts: ParseResult, *, pattern: bool = False) -> str:
     """Return *path* with the params, query and fragment of *parts* appended."""
     if parts.params:
         path = f"{path};{parts.params}"
     if parts.query:
-        path = f"{path}?{parts.query}"
+        path = f"{path}?{_canonicalize_query(parts.query, pattern=pattern)}"
     if parts.fragment:
         path = f"{path}#{parts.fragment}"
     return path
@@ -107,4 +121,4 @@ def _quote_pattern(pattern: str) -> str:
     parts = urlparse(pattern)
     pattern = _unquote(parts.path, ignore="/*$%")
     pattern = quote(pattern, safe="/*%=")
-    return _join(pattern + last_char, parts)
+    return _join(pattern + last_char, parts, pattern=True)

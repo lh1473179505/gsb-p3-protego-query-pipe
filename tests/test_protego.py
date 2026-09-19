@@ -1396,6 +1396,69 @@ class TestProtego:
         assert rp.can_fetch("https://www.site.local/s/", "*")
         assert not rp.can_fetch("https://www.site.local/?s=asd", "*")
 
+    def test_disallow_query_wildcard_with_reserved_characters(self):
+        """Query literals are canonicalized by decoding percent escapes.
+
+        The ``%7C`` and ``%3D`` escapes are compared as literal ``|`` and
+        ``=`` on both sides, while ``*`` remains a wildcard.
+        """
+        content = (
+            "User-agent: *\n"
+            "Disallow: /en-uk/*?*specialFeatures=*|*|*\n"
+        )
+        rp = Protego.parse(content=content)
+
+        literal_url = (
+            "https://site.local/en-uk/products?"
+            "specialFeatures=red|blue|green&sort=asc"
+        )
+        encoded_url = (
+            "https://site.local/en-uk/products?"
+            "specialFeatures=red%7Cblue%7Cgreen&sort%3Dasc"
+        )
+        lowercase_encoded_url = (
+            "https://site.local/en-uk/products?"
+            "specialfeatures%3dred%7cblue%7cgreen&sort%3dasc"
+        )
+
+        assert not rp.can_fetch(literal_url, "*")
+        assert not rp.can_fetch(encoded_url, "*")
+        assert rp.can_fetch(lowercase_encoded_url, "*")
+
+    def test_disallow_query_wildcard_with_encoded_reserved_characters(self):
+        content = (
+            "User-agent: *\n"
+            "Disallow: /en-uk/*?*specialFeatures%3D*%7C*%7C*\n"
+        )
+        rp = Protego.parse(content=content)
+
+        assert not rp.can_fetch(
+            "https://site.local/en-uk/products?"
+            "specialFeatures=red|blue|green&sort=asc",
+            "*",
+        )
+        assert not rp.can_fetch(
+            "https://site.local/en-uk/products?"
+            "specialFeatures=red%7Cblue%7Cgreen&sort%3Dasc",
+            "*",
+        )
+
+    def test_query_wildcard_remains_a_wildcard(self):
+        content = "User-agent: *\nDisallow: /*?*q=*relevance*\n"
+        rp = Protego.parse(content=content)
+
+        assert not rp.can_fetch("https://site.local/search?q=relevance&x=1", "*")
+        assert not rp.can_fetch("https://site.local/search?q%3Drelevance&x=1", "*")
+        assert rp.can_fetch("https://site.local/search?q=irrelevant", "*")
+
+    def test_query_encoded_asterisk_remains_a_literal(self):
+        content = "User-agent: *\nDisallow: /search?x%2A\n"
+        rp = Protego.parse(content=content)
+
+        assert not rp.can_fetch("https://site.local/search?x*y", "*")
+        assert not rp.can_fetch("https://site.local/search?x%2Ay", "*")
+        assert rp.can_fetch("https://site.local/search?xy", "*")
+
 
 @pytest.mark.parametrize(
     ("url", "allowed"),
@@ -1447,6 +1510,10 @@ def test_redos():
         ("/a;b", "/a;b", "/a;b"),
         ("/a:b", "/a%3Ab", "/a%3Ab"),
         ("/a b", "/a%20b", "/a%20b"),
+        ("/a?b=c|d", "/a?b=c|d", "/a?b=c|d"),
+        ("/a?b%3Dc%7Cd", "/a?b=c|d", "/a?b=c|d"),
+        ("/a?*b=c|d*", "/a?%2Ab=c|d%2A", "/a?*b=c|d*"),
+        ("/a?%2Ab=c", "/a?%2Ab=c", "/a?%2Ab=c"),
         ("/á", "/%C3%A1", "/%C3%A1"),
         ("/a*b", "/a%2Ab", "/a*b"),
         ("/a$b", "/a%24b", "/a%24b"),

@@ -212,6 +212,12 @@ Methods
     mybot/1.0)"``; a group applies when its product token appears in
     *user_agent* at a token boundary.
 
+    Before matching, URL query strings and rule query strings are
+    canonicalized by decoding percent-encoded literal characters. For
+    example, ``|`` and ``%7C`` compare the same, as do ``=`` and ``%3D``.
+    A ``*`` in a rule remains a wildcard, while ``%2A`` matches a literal
+    asterisk. The existing ``$`` end-anchor handling is unchanged.
+
 *   ``crawl_delay(user_agent)`` Return the crawl delay specified for the user
     agent as a float. If nothing is specified, return ``None``.
 

@@ -8,6 +8,12 @@ Protego changelog
 -   **Backward-incompatible:** ``Protego.parse()`` now raises a more suitable
     ``TypeError`` instead of a ``ValueError`` when ``content`` is not a string.
 
+-   Fixed query-string wildcard matching when literal reserved characters are
+    written differently in the rule and URL. Query percent escapes are decoded
+    on both sides, so ``|`` matches ``%7C`` and ``=`` matches ``%3D``. A rule's
+    ``*`` remains a wildcard, while ``%2A`` continues to match a literal
+    asterisk.
+
 0.6.2 (2026-06-25)
 ==================
 
