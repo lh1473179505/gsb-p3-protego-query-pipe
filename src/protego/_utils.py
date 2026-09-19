@@ -16,6 +16,18 @@ _QUOTED_URL = re.compile(
 # Patterns keep "*" unquoted as well, and their trailing "$" is preserved as is.
 _QUOTED_PATTERN = re.compile(r"(?!//)[A-Za-z0-9_.~/=*-]+\$?").fullmatch
 
+# Characters that RFC 3986 allows verbatim in a query component and that are
+# safe to keep literal during canonicalization. Everything else found in a
+# query, e.g. "|", is percent-encoded so that rules and URLs compare equal
+# regardless of whether their query was originally percent-encoded. "%" is
+# kept so that existing percent-encoded sequences survive, and "$" is left
+# out so that it canonicalizes to "%24" instead of clashing with the
+# end-anchor syntax of rules.
+_QUERY_SAFE_URL = "/%?&=;+:@,!'()"
+# In rules, "*" is the wildcard metacharacter and must never be
+# percent-encoded, while in URLs a literal "*" canonicalizes to "%2A".
+_QUERY_SAFE_PATTERN = _QUERY_SAFE_URL + "*"
+
 
 def _parse_time_of_day(value: str) -> time:
     """Parse an HMM or HHMM time-of-day value."""
@@ -76,8 +88,21 @@ def _join(path: str, parts: ParseResult) -> str:
     return path
 
 
+def _quote_query(query: str, *, safe: str, ignore: str) -> str:
+    """Canonicalize a query component.
+
+    Percent-encoded sequences are decoded first and the result is encoded
+    again against *safe*, so that literal and percent-encoded spellings of
+    the same character, e.g. "|" and "%7C", compare equal. *ignore* lists
+    characters whose percent-encoded form must be preserved as is.
+    """
+    if not query:
+        return query
+    return quote(_unquote(query, ignore=ignore), safe=safe)
+
+
 def _quote_path(path: str) -> str:
-    """Return percent encoded path."""
+    """Return the percent-encoded, canonical form of a URL path and query."""
     quoted = _QUOTED_URL(path)
     if quoted:
         return quoted[1]
@@ -85,10 +110,18 @@ def _quote_path(path: str) -> str:
     parts = urlparse(path)
     path = _unquote(parts.path, ignore="/%")
     path = quote(path, safe="/%=")
+    query = _quote_query(parts.query, safe=_QUERY_SAFE_URL, ignore="%")
+    parts = parts._replace(query=query)
     return _join(path, parts) or "/"
 
 
 def _quote_pattern(pattern: str) -> str:
+    """Return the canonical form of an allow or disallow pattern.
+
+    The query component is canonicalized like in :func:`_quote_path`, except
+    that "*" is kept literal because it is the wildcard metacharacter, and
+    "%2A" is preserved so that rules can still match a literal asterisk.
+    """
     if _QUOTED_PATTERN(pattern):
         return pattern
 
@@ -107,4 +140,6 @@ def _quote_pattern(pattern: str) -> str:
     parts = urlparse(pattern)
     pattern = _unquote(parts.path, ignore="/*$%")
     pattern = quote(pattern, safe="/*%=")
+    query = _quote_query(parts.query, safe=_QUERY_SAFE_PATTERN, ignore="*$%")
+    parts = parts._replace(query=query)
     return _join(pattern + last_char, parts)

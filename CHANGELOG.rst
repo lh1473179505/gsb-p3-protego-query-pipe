@@ -8,6 +8,16 @@ Protego changelog
 -   **Backward-incompatible:** ``Protego.parse()`` now raises a more suitable
     ``TypeError`` instead of a ``ValueError`` when ``content`` is not a string.
 
+-   Fixed matching of ``Allow`` and ``Disallow`` patterns whose query
+    component contains characters that are not allowed verbatim in a query,
+    such as ``|``. The query of both patterns and URLs is now canonicalized
+    symmetrically — existing ``%xx`` sequences are decoded and the query is
+    percent-encoded again against a fixed safe set — so, for example,
+    ``Disallow: /*?*specialFeatures=*|*|*`` matches URLs whether they spell
+    the value with a literal ``|`` or with ``%7C``. ``*`` remains the wildcard
+    metacharacter in patterns (``%2A`` matches a literal asterisk), and the
+    ``$`` end-anchor semantics are unchanged.
+
 0.6.2 (2026-06-25)
 ==================
 

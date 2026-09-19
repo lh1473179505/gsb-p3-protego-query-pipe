@@ -89,6 +89,27 @@ Using Protego with Requests_:
 .. _Requests: https://3.python-requests.org/
 
 
+URL and pattern canonicalization
+================================
+
+Before matching, Protego canonicalizes both the URLs passed to
+:meth:`~protego.Protego.can_fetch` and the ``Allow`` and ``Disallow``
+patterns, so that equivalent spellings of the same character compare equal:
+
+-   Existing ``%xx`` percent-encoded sequences are decoded and the value is
+    percent-encoded again against a fixed set of safe characters. As a
+    result, a pattern such as ``/*?*specialFeatures=*|*|*`` matches a URL
+    whether its query spells the value with a literal ``|`` or with ``%7C``,
+    and ``=`` matches both ``=`` and ``%3D``.
+
+-   In patterns, ``*`` is the wildcard metacharacter and is never
+    percent-encoded; ``%2A`` in a pattern matches a literal asterisk. In
+    URLs, a literal ``*`` canonicalizes to ``%2A``.
+
+-   ``$`` at the end of a pattern is the end-anchor; a literal ``$``
+    elsewhere canonicalizes to ``%24`` on both sides.
+
+
 Comparison
 ==========
 

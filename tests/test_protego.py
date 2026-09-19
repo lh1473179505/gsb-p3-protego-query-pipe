@@ -1396,6 +1396,68 @@ class TestProtego:
         assert rp.can_fetch("https://www.site.local/s/", "*")
         assert not rp.can_fetch("https://www.site.local/?s=asd", "*")
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://www.site.local/en-uk/tv?specialFeatures=4k|hdr|smart",
+            "https://www.site.local/en-uk/tv?specialFeatures=4k%7Chdr%7Csmart",
+            "https://www.site.local/en-uk/tv?specialFeatures=4k%7chdr%7csmart",
+        ],
+    )
+    def test_query_literal_pipe_matches_encoded_url(self, url):
+        # Canonicalization form: the query of both rules and URLs is decoded
+        # and percent-encoded again against a fixed safe set, so the literal
+        # "|" of the rule and "%7C" in the URL both canonicalize to "%7C".
+        content = "User-agent: *\nDisallow: /en-uk/*?*specialFeatures=*|*|*\n"
+        rp = Protego.parse(content=content)
+        assert not rp.can_fetch(url, "*")
+
+    def test_query_encoded_pipe_matches_literal_url(self):
+        content = "User-agent: *\nDisallow: /*?*specialFeatures=*%7C*%7C*\n"
+        rp = Protego.parse(content=content)
+        assert not rp.can_fetch(
+            "https://www.site.local/tv?specialFeatures=4k|hdr|smart", "*"
+        )
+        assert not rp.can_fetch(
+            "https://www.site.local/tv?specialFeatures=4k%7Chdr%7Csmart", "*"
+        )
+
+    def test_query_literal_pipe_allows_non_matching_url(self):
+        content = "User-agent: *\nDisallow: /en-uk/*?*specialFeatures=*|*|*\n"
+        rp = Protego.parse(content=content)
+        assert rp.can_fetch("https://www.site.local/en-uk/tv?specialFeatures=4k", "*")
+        # A single "|" does not match the "*|*|*" structure, in either
+        # encoding.
+        assert rp.can_fetch(
+            "https://www.site.local/en-uk/tv?specialFeatures=4k|hdr", "*"
+        )
+        assert rp.can_fetch(
+            "https://www.site.local/en-uk/tv?specialFeatures=4k%7Chdr", "*"
+        )
+
+    @pytest.mark.parametrize("url", ["/search?q=1", "/search?q%3D1"])
+    def test_query_equal_sign_matches_encoded_url(self, url):
+        # "=" is allowed verbatim in a query, so "=" and "%3D" both
+        # canonicalize to the literal "=".
+        content = "User-agent: *\nDisallow: /search?*q=*\n"
+        rp = Protego.parse(content=content)
+        assert not rp.can_fetch(url, "*")
+
+    def test_query_asterisk_remains_a_wildcard(self):
+        content = "User-agent: *\nDisallow: /search?*q=*\n"
+        rp = Protego.parse(content=content)
+        assert not rp.can_fetch("/search?q=anything", "*")
+        assert rp.can_fetch("/search", "*")
+
+    def test_query_encoded_asterisk_is_literal(self):
+        # "%2A" in a rule matches a literal asterisk only, it is not a
+        # wildcard.
+        content = "User-agent: *\nDisallow: /search?q=%2A\n"
+        rp = Protego.parse(content=content)
+        assert not rp.can_fetch("/search?q=*", "*")
+        assert not rp.can_fetch("/search?q=%2A", "*")
+        assert rp.can_fetch("/search?q=anything", "*")
+
 
 @pytest.mark.parametrize(
     ("url", "allowed"),
@@ -1455,6 +1517,21 @@ def test_redos():
         ("https://example.com/a b", "/a%20b", "/https%3A//example.com/a%20b"),
         ("https://example.com//a", "//a", "/https%3A//example.com//a"),
         ("https://example.com", "/", "/https%3A//example.com"),
+        # Query components are canonicalized symmetrically: existing %xx
+        # sequences are decoded and the query is percent-encoded again
+        # against a fixed safe set.
+        ("/a?b=c|d", "/a?b=c%7Cd", "/a?b=c%7Cd"),
+        ("/a?b=c%7Cd", "/a?b=c%7Cd", "/a?b=c%7Cd"),
+        ("/a?b=c%3Dd", "/a?b=c=d", "/a?b=c=d"),
+        ("/a?b=c d", "/a?b=c%20d", "/a?b=c%20d"),
+        ("/a?b=c+d&e=f", "/a?b=c+d&e=f", "/a?b=c+d&e=f"),
+        # In URLs a literal "*" becomes "%2A"; in patterns "*" stays a
+        # wildcard and "%2A" stays a literal asterisk.
+        ("/a?b=*", "/a?b=%2A", "/a?b=*"),
+        ("/a?b=%2A", "/a?b=%2A", "/a?b=%2A"),
+        # "$" in a query canonicalizes to "%24" on both sides.
+        ("/a?b=c$d", "/a?b=c%24d", "/a?b=c%24d"),
+        ("/a?b=c%24d", "/a?b=c%24d", "/a?b=c%24d"),
     ],
 )
 def test_quoting(value, path, pattern):
